@@ -15,6 +15,9 @@ class DatabaseSeeder extends Seeder
 {
     use WithoutModelEvents;
 
+    private const POSTS_COUNT = 100;
+    private const ANALYTICS_END_DATE = '2026-01-31';
+
     /**
      * Seed the application's database.
      */
@@ -33,19 +36,19 @@ class DatabaseSeeder extends Seeder
         ]);
 
         $posts = Post::factory()
-            ->count(5)
+            ->count(self::POSTS_COUNT)
             ->for($author, 'author')
             ->create();
 
         foreach ($posts as $index => $post) {
-            $this->seedViews($post, $viewer, $index + 1);
+            $this->seedViews($post, $viewer, ($index % 30) + 1);
         }
     }
 
     private function seedViews(Post $post, User $viewer, int $days): void
     {
         for ($day = 0; $day < $days; $day++) {
-            $viewedAt = CarbonImmutable::today()->subDays($day)->setTime(10, 0);
+            $viewedAt = CarbonImmutable::parse(self::ANALYTICS_END_DATE)->subDays($day)->setTime(10, 0);
             $guestIp = '203.0.113.'.($post->id + $day);
 
             PostView::query()->insertOrIgnore([

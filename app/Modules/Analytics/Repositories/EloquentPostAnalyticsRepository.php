@@ -25,6 +25,15 @@ final class EloquentPostAnalyticsRepository implements PostAnalyticsRepositoryIn
             ->keyBy('date');
     }
 
+    public function totalUniqueVisitors(Post $post, DateRange $range): int
+    {
+        return (int) PostView::query()
+            ->where('post_id', $post->id)
+            ->whereBetween('viewed_date', [$range->from->toDateString(), $range->to->toDateString()])
+            ->distinct('visitor_hash')
+            ->count('visitor_hash');
+    }
+
     public function topViewed(DateRange $range, int $limit): Collection
     {
         return Post::query()

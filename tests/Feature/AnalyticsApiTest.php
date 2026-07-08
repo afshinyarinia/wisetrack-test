@@ -7,6 +7,7 @@ use App\Modules\Analytics\Models\PostView;
 use App\Modules\Posts\Models\Post;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Cache;
 use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
 
@@ -63,6 +64,22 @@ class AnalyticsApiTest extends TestCase
             ->assertJsonPath('data.meta.total_views', 2);
     }
 
+    public function test_summary_total_unique_users_counts_visitors_once_for_the_period(): void
+    {
+        $dashboardUser = User::factory()->create();
+        $post = Post::factory()->create();
+
+        $this->createView($post, null, '2026-01-01', 'returning-guest');
+        $this->createView($post, null, '2026-01-02', 'returning-guest');
+
+        Sanctum::actingAs($dashboardUser);
+
+        $this->getJson("/api/posts/{$post->id}/analytics/summary?from=2026-01-01&to=2026-01-02")
+            ->assertOk()
+            ->assertJsonPath('data.meta.total_views', 2)
+            ->assertJsonPath('data.meta.total_unique_users', 1);
+    }
+
     public function test_top_viewed_posts_match_dashboard_contract(): void
     {
         $user = User::factory()->create();
@@ -92,6 +109,121 @@ class AnalyticsApiTest extends TestCase
             ->assertJsonPath('meta.average_views_per_post', 1.5);
     }
 
+    public function test_top_viewed_posts_can_be_read_from_a_serializing_cache_store(): void
+    {
+        config(['cache.default' => 'file']);
+        Cache::clear();
+
+        $author = User::factory()->create(['name' => 'Report Author']);
+        $post = Post::factory()->for($author, 'author')->create(['title' => 'Cached Post']);
+
+        $this->createView($post, null, '2026-01-01', 'guest-one');
+
+        $url = '/api/posts/top-viewed?from=2026-01-01&to=2026-01-07';
+
+        $this->getJson($url)->assertOk();
+
+        $this->getJson($url)
+            ->assertOk()
+            ->assertJsonPath('data.0.post_id', $post->id)
+            ->assertJsonPath('data.0.title', 'Cached Post')
+            ->assertJsonPath('data.0.author', 'Report Author')
+            ->assertJsonPath('data.0.total_views', 1);
+    }
+
+    public function test_top_viewed_cache_is_invalidated_after_a_new_unique_view(): void
+    {
+        Cache::clear();
+
+        $author = User::factory()->create(['name' => 'Report Author']);
+        $first = Post::factory()->for($author, 'author')->create(['title' => 'First']);
+        $second = Post::factory()->for($author, 'author')->create(['title' => 'Second']);
+
+        $this->createView($first, null, '2026-01-01', 'guest-one');
+
+        $url = '/api/posts/top-viewed?from=2026-01-01&to=2026-01-07';
+
+        $this->getJson($url)
+            ->assertOk()
+            ->assertJsonPath('data.0.post_id', $first->id)
+            ->assertJsonPath('data.0.total_views', 1);
+
+        CarbonImmutable::setTestNow(CarbonImmutable::parse('2026-01-01 13:00:00'));
+
+        try {
+            $this->withHeaders(['User-Agent' => 'Feature Test Browser One'])
+                ->getJson("/api/posts/{$second->id}", ['REMOTE_ADDR' => '203.0.113.21'])
+                ->assertOk();
+
+            $this->withHeaders(['User-Agent' => 'Feature Test Browser Two'])
+                ->getJson("/api/posts/{$second->id}", ['REMOTE_ADDR' => '203.0.113.22'])
+                ->assertOk();
+
+            $this->getJson($url)
+                ->assertOk()
+                ->assertJsonPath('data.0.post_id', $second->id)
+                ->assertJsonPath('data.0.total_views', 2);
+        } finally {
+            CarbonImmutable::setTestNow();
+        }
+    }
+
+    public function test_top_viewed_cache_invalidation_is_coalesced_within_the_ttl_window(): void
+    {
+        config(['analytics.cache.top_viewed_ttl_seconds' => 60]);
+        Cache::clear();
+
+        $author = User::factory()->create(['name' => 'Report Author']);
+        $first = Post::factory()->for($author, 'author')->create(['title' => 'First']);
+        $second = Post::factory()->for($author, 'author')->create(['title' => 'Second']);
+        $third = Post::factory()->for($author, 'author')->create(['title' => 'Third']);
+
+        $this->createView($first, null, '2026-01-01', 'guest-one');
+
+        $url = '/api/posts/top-viewed?from=2026-01-01&to=2026-01-07';
+
+        $this->getJson($url)
+            ->assertOk()
+            ->assertJsonPath('data.0.post_id', $first->id)
+            ->assertJsonPath('data.0.total_views', 1);
+
+        CarbonImmutable::setTestNow(CarbonImmutable::parse('2026-01-01 13:00:00'));
+
+        try {
+            $this->withHeaders(['User-Agent' => 'Feature Test Browser Two'])
+                ->getJson("/api/posts/{$second->id}", ['REMOTE_ADDR' => '203.0.113.22'])
+                ->assertOk();
+
+            $this->withHeaders(['User-Agent' => 'Feature Test Browser Three'])
+                ->getJson("/api/posts/{$second->id}", ['REMOTE_ADDR' => '203.0.113.23'])
+                ->assertOk();
+
+            $this->getJson($url)
+                ->assertOk()
+                ->assertJsonPath('data.0.post_id', $second->id)
+                ->assertJsonPath('data.0.total_views', 2);
+
+            $this->withHeaders(['User-Agent' => 'Feature Test Browser Four'])
+                ->getJson("/api/posts/{$third->id}", ['REMOTE_ADDR' => '203.0.113.24'])
+                ->assertOk();
+
+            $this->withHeaders(['User-Agent' => 'Feature Test Browser Five'])
+                ->getJson("/api/posts/{$third->id}", ['REMOTE_ADDR' => '203.0.113.25'])
+                ->assertOk();
+
+            $this->withHeaders(['User-Agent' => 'Feature Test Browser Six'])
+                ->getJson("/api/posts/{$third->id}", ['REMOTE_ADDR' => '203.0.113.26'])
+                ->assertOk();
+
+            $this->getJson($url)
+                ->assertOk()
+                ->assertJsonPath('data.0.post_id', $second->id)
+                ->assertJsonPath('data.0.total_views', 2);
+        } finally {
+            CarbonImmutable::setTestNow();
+        }
+    }
+
     /*
     |--------------------------------------------------------------------------
     | Additional coverage beyond the assignment requirements
@@ -119,6 +251,14 @@ class AnalyticsApiTest extends TestCase
         $this->getJson("/api/posts/{$post->id}/analytics/daily?from=2026-01-04&to=2026-01-03")
             ->assertUnprocessable()
             ->assertJsonValidationErrors('from');
+
+        $this->getJson("/api/posts/{$post->id}/analytics/daily?from=2999-01-01")
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('from');
+
+        $this->getJson("/api/posts/{$post->id}/analytics/daily?from=2026-01-01&to=2027-01-02")
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('to');
     }
 
     public function test_daily_analytics_is_scoped_to_requested_post_and_date_range(): void
@@ -158,6 +298,14 @@ class AnalyticsApiTest extends TestCase
         $this->getJson('/api/posts/top-viewed?from=2026-01-04&to=2026-01-03')
             ->assertUnprocessable()
             ->assertJsonValidationErrors('from');
+
+        $this->getJson('/api/posts/top-viewed?from=2999-01-01')
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('from');
+
+        $this->getJson('/api/posts/top-viewed?from=2026-01-01&to=2027-01-02')
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('to');
     }
 
     public function test_top_viewed_posts_respect_limit_and_date_range(): void

@@ -6,5 +6,5 @@ use App\Modules\Analytics\Data\TrackPostViewData;
 
 interface PostViewRepositoryInterface
 {
-    public function recordUniqueDailyView(TrackPostViewData $data): void;
+    public function recordUniqueDailyView(TrackPostViewData $data): bool;
 }

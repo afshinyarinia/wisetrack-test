@@ -17,8 +17,8 @@ class PostFactory extends Factory
     {
         return [
             'user_id' => User::factory(),
-            'title' => fake()->sentence(4),
-            'content' => fake()->paragraphs(3, true),
+            'title' => \fake()->sentence(4),
+            'content' => \fake()->paragraphs(3, true),
             'image' => null,
         ];
     }

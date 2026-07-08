@@ -10,5 +10,7 @@ interface PostAnalyticsRepositoryInterface
 {
     public function dailyRows(Post $post, DateRange $range): Collection;
 
+    public function totalUniqueVisitors(Post $post, DateRange $range): int;
+
     public function topViewed(DateRange $range, int $limit): Collection;
 }

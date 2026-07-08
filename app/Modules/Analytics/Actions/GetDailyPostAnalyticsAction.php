@@ -19,6 +19,7 @@ final class GetDailyPostAnalyticsAction
     {
         $rowsByDate = $this->analyticsRepository->dailyRows($post, $range);
         $rows = $this->fillMissingDates($rowsByDate, $range);
+        $totalUniqueUsers = $this->analyticsRepository->totalUniqueVisitors($post, $range);
 
         return [
             'post' => $post,
@@ -27,7 +28,7 @@ final class GetDailyPostAnalyticsAction
                 'to' => $range->to->toDateString(),
             ],
             'analytics' => $rows->values(),
-            'meta' => $this->metaCalculator->calculate($rows, $range),
+            'meta' => $this->metaCalculator->calculate($rows, $range, $totalUniqueUsers),
         ];
     }
 

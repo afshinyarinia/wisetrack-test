@@ -11,10 +11,9 @@ final class AnalyticsMetaCalculator
         private readonly TrendCalculator $trendCalculator,
     ) {}
 
-    public function calculate(Collection $rows, DateRange $range): array
+    public function calculate(Collection $rows, DateRange $range, int $totalUniqueUsers): array
     {
         $totalViews = (int) $rows->sum('total_views');
-        $totalUniqueUsers = (int) $rows->sum('unique_users');
         $peak = $rows->sortByDesc('unique_users')->first();
 
         return [

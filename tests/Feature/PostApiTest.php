@@ -53,6 +53,36 @@ class PostApiTest extends TestCase
             ->assertJsonStructure(['links', 'meta']);
     }
 
+    public function test_post_list_reports_distinct_unique_view_count(): void
+    {
+        $post = Post::factory()->create();
+
+        PostView::query()->create([
+            'post_id' => $post->id,
+            'user_id' => null,
+            'visitor_hash' => hash('sha256', 'returning-guest'),
+            'ip_address' => '203.0.113.10',
+            'user_agent' => 'Feature Test Browser',
+            'viewed_date' => '2026-01-01',
+            'viewed_at' => CarbonImmutable::parse('2026-01-01 12:00:00'),
+        ]);
+
+        PostView::query()->create([
+            'post_id' => $post->id,
+            'user_id' => null,
+            'visitor_hash' => hash('sha256', 'returning-guest'),
+            'ip_address' => '203.0.113.10',
+            'user_agent' => 'Feature Test Browser',
+            'viewed_date' => '2026-01-02',
+            'viewed_at' => CarbonImmutable::parse('2026-01-02 12:00:00'),
+        ]);
+
+        $this->getJson('/api/posts')
+            ->assertOk()
+            ->assertJsonPath('data.0.views_count', 2)
+            ->assertJsonPath('data.0.unique_views_count', 1);
+    }
+
     public function test_post_show_tracks_view_once_per_user_per_day(): void
     {
         $user = User::factory()->create();
@@ -60,7 +90,11 @@ class PostApiTest extends TestCase
 
         Sanctum::actingAs($user);
 
-        $this->getJson("/api/posts/{$post->id}")->assertOk();
+        $this->getJson("/api/posts/{$post->id}")
+            ->assertOk()
+            ->assertJsonPath('data.views_count', 1)
+            ->assertJsonPath('data.unique_views_count', 1);
+
         $this->getJson("/api/posts/{$post->id}")->assertOk();
 
         $this->assertDatabaseCount('post_views', 1);

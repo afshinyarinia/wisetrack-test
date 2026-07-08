@@ -7,9 +7,9 @@ use App\Modules\Analytics\Models\PostView;
 
 final class EloquentPostViewRepository implements PostViewRepositoryInterface
 {
-    public function recordUniqueDailyView(TrackPostViewData $data): void
+    public function recordUniqueDailyView(TrackPostViewData $data): bool
     {
-        PostView::query()->insertOrIgnore([
+        return PostView::query()->insertOrIgnore([
             'post_id' => $data->postId,
             'user_id' => $data->userId,
             'visitor_hash' => $data->visitorHash,
@@ -19,6 +19,6 @@ final class EloquentPostViewRepository implements PostViewRepositoryInterface
             'viewed_at' => $data->viewedAt,
             'created_at' => now(),
             'updated_at' => now(),
-        ]);
+        ]) === 1;
     }
 }

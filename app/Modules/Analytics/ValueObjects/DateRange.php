@@ -15,7 +15,7 @@ final readonly class DateRange
             throw new InvalidArgumentException('From date must be before or equal to to date.');
         }
 
-        if ($from->diffInDays($to) > 366) {
+        if (((int) $from->diffInDays($to) + 1) > 366) {
             throw new InvalidArgumentException('Date range cannot exceed 366 days.');
         }
     }

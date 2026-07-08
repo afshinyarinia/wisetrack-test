@@ -30,6 +30,9 @@ mkdir -p \
     storage/logs \
     bootstrap/cache
 
+chown -R www-data:www-data storage bootstrap/cache
+chmod -R ug+rwX storage bootstrap/cache
+
 php artisan storage:link --force >/dev/null 2>&1 || true
 php artisan config:clear >/dev/null 2>&1 || true
 

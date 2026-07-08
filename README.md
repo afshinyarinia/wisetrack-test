@@ -6,7 +6,8 @@ A Laravel API for managing posts and tracking daily unique post views. The proje
 
 - PHP 8.3+
 - Composer
-- SQLite, MySQL, or PostgreSQL
+- MySQL 8.4+
+- Redis, when using the Docker queue/cache setup
 
 ## Setup
 
@@ -14,10 +15,24 @@ A Laravel API for managing posts and tracking daily unique post views. The proje
 composer install
 cp .env.example .env
 php artisan key:generate
+docker compose up -d mysql redis
 php artisan migrate --seed
 php artisan storage:link
 php artisan serve
 ```
+
+The default `.env.example` points Laravel at the MySQL service exposed by Docker on `127.0.0.1:33060`:
+
+```env
+DB_CONNECTION=mysql
+DB_HOST=127.0.0.1
+DB_PORT=33060
+DB_DATABASE=post_analytics
+DB_USERNAME=post_analytics
+DB_PASSWORD=post_analytics_password
+```
+
+If you use your own MySQL server instead of the Docker service, update the `DB_*` values before running `php artisan migrate --seed`.
 
 ## Docker Setup
 
@@ -39,11 +54,18 @@ The Docker environment uses:
 - Redis for cache, sessions, and queues
 - A queue worker service for the welcome email job
 - A shared storage volume for uploaded post images
+- `stderr` logging so Laravel logs go to container output instead of `storage/logs/laravel.log`
 
 The first app container startup runs migrations automatically. To seed sample data inside Docker:
 
 ```bash
 docker compose exec app php artisan db:seed
+```
+
+The main seeder creates demo users, 100 posts, and analytics view rows for January 2026, matching the default Postman collection date variables. To reset and reseed the Docker database:
+
+```bash
+docker compose exec app php artisan migrate:fresh --seed
 ```
 
 Useful Docker commands:
@@ -56,20 +78,6 @@ docker compose logs -f queue
 ```
 
 Docker uses `.env.docker` by default through `docker-compose.yml`. The committed values are local development values only.
-
-For local development, SQLite is enough:
-
-```env
-DB_CONNECTION=sqlite
-DB_DATABASE=/absolute/path/to/database/database.sqlite
-QUEUE_CONNECTION=database
-```
-
-Create the SQLite file before running migrations:
-
-```bash
-type nul > database/database.sqlite
-```
 
 ## Queue
 
@@ -90,7 +98,7 @@ QUEUE_CONNECTION=redis
 REDIS_HOST=redis
 ```
 
-The public top-viewed endpoint also uses Laravel cache. In Docker that cache is Redis-backed, with a short one-minute TTL so the endpoint stays responsive without keeping analytics stale for long.
+The public top-viewed endpoint also uses Laravel cache. In Docker that cache is Redis-backed. The default TTL is 60 seconds through `ANALYTICS_TOP_VIEWED_CACHE_TTL_SECONDS`. Successful new unique views can bump the top-viewed cache version at most once per TTL window, so the endpoint avoids per-view cache churn while keeping rankings eventually fresh. Old entries expire naturally.
 
 ## API Endpoints
 
@@ -147,6 +155,49 @@ The code follows a structured Laravel approach:
 - API Resources define response shape.
 - Jobs handle asynchronous email work.
 
+Folder layout:
+
+```text
+app/
+  Http/
+    Controllers/        HTTP entrypoints grouped by Auth, Posts, and Analytics
+    Requests/           Validation and request-to-DTO helpers
+    Resources/          API response transformers
+  Jobs/                 Queue jobs, such as welcome email dispatch
+  Mail/                 Mailables used by queued jobs
+  Models/               Laravel app-level models, currently User
+  Modules/
+    Auth/               Login and registration actions/data objects
+    Posts/              Post model plus create, list, and show use cases
+    Analytics/          View tracking, reports, repositories, value objects, services
+    Shared/             Cross-feature infrastructure abstractions
+  Providers/            Service container bindings for interfaces to implementations
+database/
+  factories/            Test and seeder model factories
+  migrations/           MySQL schema for users, posts, post views, jobs, cache, tokens
+  seeders/              Main demo-data seeder for users, posts, and analytics rows
+docker/
+  mysql/init/           Local MySQL bootstrap, including the test database
+  nginx/                Nginx container config
+  php/                  PHP-FPM container and entrypoint
+routes/
+  api.php               Public API routes
+  console.php           Artisan-only commands such as posts:seed
+tests/
+  Feature/              API, seeder, and command coverage
+```
+
+The module folders are organized by feature first, then by role:
+
+- `Actions` contain application use cases.
+- `Data` objects carry validated input into actions.
+- `Models` contain Eloquent models owned by that feature.
+- `Repositories` isolate persistence details when queries or atomic writes are non-trivial.
+- `Services` contain reusable domain calculations or identity resolution.
+- `ValueObjects` protect small business concepts such as date ranges and visitor identity.
+
+Interface bindings live in `AppServiceProvider`, keeping controllers and actions dependent on contracts where the implementation is likely to change.
+
 The code avoids a full domain framework, command bus, CQRS, and broad repository wrapping. The extra structure is used where it protects actual business rules.
 
 ## View Tracking Design
@@ -171,6 +222,12 @@ View recording uses `insertOrIgnore`, so duplicate requests or concurrent reques
 
 ```bash
 php artisan test
+```
+
+Tests use the dedicated MySQL database `post_analytics_test`. Fresh Docker volumes create this database automatically through `docker/mysql/init/01-create-test-database.sql`. If you already had a MySQL volume before this file existed, create it once manually:
+
+```bash
+docker compose exec mysql mysql -uroot -proot_password -e "CREATE DATABASE IF NOT EXISTS post_analytics_test; GRANT ALL PRIVILEGES ON post_analytics_test.* TO 'post_analytics'@'%';"
 ```
 
 Covered behavior:
