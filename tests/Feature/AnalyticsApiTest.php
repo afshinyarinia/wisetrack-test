@@ -40,6 +40,64 @@ class AnalyticsApiTest extends TestCase
             ->assertJsonPath('data.meta.total_views', 3);
     }
 
+    public function test_summary_analytics_includes_daily_rows_and_meta(): void
+    {
+        $dashboardUser = User::factory()->create();
+        $post = Post::factory()->create(['title' => 'Analytics Post']);
+        $registeredViewer = User::factory()->create();
+
+        $this->createView($post, $registeredViewer, '2026-01-01', 'user-one');
+        $this->createView($post, null, '2026-01-02', 'guest-one');
+
+        Sanctum::actingAs($dashboardUser);
+
+        $this->getJson("/api/posts/{$post->id}/analytics/summary?from=2026-01-01&to=2026-01-02")
+            ->assertOk()
+            ->assertJsonPath('data.post_id', $post->id)
+            ->assertJsonPath('data.title', 'Analytics Post')
+            ->assertJsonPath('data.analytics.0.date', '2026-01-01')
+            ->assertJsonPath('data.analytics.0.registered_users', 1)
+            ->assertJsonPath('data.analytics.1.date', '2026-01-02')
+            ->assertJsonPath('data.analytics.1.guest_users', 1)
+            ->assertJsonPath('data.meta.total_days', 2)
+            ->assertJsonPath('data.meta.total_views', 2);
+    }
+
+    public function test_top_viewed_posts_match_dashboard_contract(): void
+    {
+        $user = User::factory()->create();
+        $author = User::factory()->create(['name' => 'Report Author']);
+        $first = Post::factory()->for($author, 'author')->create(['title' => 'First']);
+        $second = Post::factory()->for($author, 'author')->create(['title' => 'Second']);
+
+        $this->createView($first, null, '2026-01-01', 'guest-one');
+        $this->createView($second, null, '2026-01-01', 'guest-two');
+        $this->createView($second, $user, '2026-01-01', 'user-one');
+
+        $this->getJson('/api/posts/top-viewed?from=2026-01-01&to=2026-01-07')
+            ->assertOk()
+            ->assertJsonPath('data.0.rank', 1)
+            ->assertJsonPath('data.0.post_id', $second->id)
+            ->assertJsonPath('data.0.title', 'Second')
+            ->assertJsonPath('data.0.author', 'Report Author')
+            ->assertJsonPath('data.0.total_views', 2)
+            ->assertJsonPath('data.0.unique_users', 2)
+            ->assertJsonPath('data.0.trend', 'stable')
+            ->assertJsonPath('data.1.rank', 2)
+            ->assertJsonPath('data.1.post_id', $first->id)
+            ->assertJsonPath('data.1.title', 'First')
+            ->assertJsonPath('data.1.total_views', 1)
+            ->assertJsonPath('meta.total_posts_analyzed', 2)
+            ->assertJsonPath('meta.period_days', 7)
+            ->assertJsonPath('meta.average_views_per_post', 1.5);
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | Additional coverage beyond the assignment requirements
+    |--------------------------------------------------------------------------
+    */
+
     public function test_analytics_endpoints_require_authentication(): void
     {
         $post = Post::factory()->create();
@@ -83,64 +141,12 @@ class AnalyticsApiTest extends TestCase
             ->assertJsonPath('data.analytics.2.total_views', 0);
     }
 
-    public function test_summary_analytics_includes_daily_rows_and_meta(): void
-    {
-        $dashboardUser = User::factory()->create();
-        $post = Post::factory()->create(['title' => 'Analytics Post']);
-        $registeredViewer = User::factory()->create();
-
-        $this->createView($post, $registeredViewer, '2026-01-01', 'user-one');
-        $this->createView($post, null, '2026-01-02', 'guest-one');
-
-        Sanctum::actingAs($dashboardUser);
-
-        $this->getJson("/api/posts/{$post->id}/analytics/summary?from=2026-01-01&to=2026-01-02")
-            ->assertOk()
-            ->assertJsonPath('data.post_id', $post->id)
-            ->assertJsonPath('data.title', 'Analytics Post')
-            ->assertJsonPath('data.analytics.0.date', '2026-01-01')
-            ->assertJsonPath('data.analytics.0.registered_users', 1)
-            ->assertJsonPath('data.analytics.1.date', '2026-01-02')
-            ->assertJsonPath('data.analytics.1.guest_users', 1)
-            ->assertJsonPath('data.meta.total_days', 2)
-            ->assertJsonPath('data.meta.total_views', 2);
-    }
-
     public function test_missing_post_analytics_returns_not_found(): void
     {
         Sanctum::actingAs(User::factory()->create());
 
         $this->getJson('/api/posts/999999/analytics/daily')->assertNotFound();
         $this->getJson('/api/posts/999999/analytics/summary')->assertNotFound();
-    }
-
-    public function test_top_viewed_posts_match_dashboard_contract(): void
-    {
-        $user = User::factory()->create();
-        $author = User::factory()->create(['name' => 'Report Author']);
-        $first = Post::factory()->for($author, 'author')->create(['title' => 'First']);
-        $second = Post::factory()->for($author, 'author')->create(['title' => 'Second']);
-
-        $this->createView($first, null, '2026-01-01', 'guest-one');
-        $this->createView($second, null, '2026-01-01', 'guest-two');
-        $this->createView($second, $user, '2026-01-01', 'user-one');
-
-        $this->getJson('/api/posts/top-viewed?from=2026-01-01&to=2026-01-07')
-            ->assertOk()
-            ->assertJsonPath('data.0.rank', 1)
-            ->assertJsonPath('data.0.post_id', $second->id)
-            ->assertJsonPath('data.0.title', 'Second')
-            ->assertJsonPath('data.0.author', 'Report Author')
-            ->assertJsonPath('data.0.total_views', 2)
-            ->assertJsonPath('data.0.unique_users', 2)
-            ->assertJsonPath('data.0.trend', 'stable')
-            ->assertJsonPath('data.1.rank', 2)
-            ->assertJsonPath('data.1.post_id', $first->id)
-            ->assertJsonPath('data.1.title', 'First')
-            ->assertJsonPath('data.1.total_views', 1)
-            ->assertJsonPath('meta.total_posts_analyzed', 2)
-            ->assertJsonPath('meta.period_days', 7)
-            ->assertJsonPath('meta.average_views_per_post', 1.5);
     }
 
     public function test_top_viewed_posts_validate_limit_and_date_range(): void

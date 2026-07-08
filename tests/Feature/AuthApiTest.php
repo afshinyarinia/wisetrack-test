@@ -86,6 +86,12 @@ class AuthApiTest extends TestCase
             ->assertJsonPath('message', 'Invalid credentials.');
     }
 
+    /*
+    |--------------------------------------------------------------------------
+    | Additional coverage beyond the assignment requirements
+    |--------------------------------------------------------------------------
+    */
+
     public function test_logout_revokes_current_token(): void
     {
         $user = User::factory()->create();
