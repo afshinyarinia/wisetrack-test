@@ -85,4 +85,21 @@ class AuthApiTest extends TestCase
             ->assertUnauthorized()
             ->assertJsonPath('message', 'Invalid credentials.');
     }
+
+    public function test_logout_revokes_current_token(): void
+    {
+        $user = User::factory()->create();
+        $token = $user->createToken('api')->plainTextToken;
+
+        $this->withToken($token)
+            ->postJson('/api/logout')
+            ->assertOk()
+            ->assertJsonPath('message', 'Logged out.');
+
+        $this->app['auth']->forgetGuards();
+
+        $this->withToken($token)
+            ->getJson('/api/user')
+            ->assertUnauthorized();
+    }
 }

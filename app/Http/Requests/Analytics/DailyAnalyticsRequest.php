@@ -15,7 +15,7 @@ class DailyAnalyticsRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'from' => ['nullable', 'date_format:Y-m-d'],
+            'from' => ['nullable', 'date_format:Y-m-d', 'before_or_equal:to'],
             'to' => ['nullable', 'date_format:Y-m-d'],
         ];
     }
