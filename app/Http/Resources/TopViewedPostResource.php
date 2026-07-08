@@ -10,11 +10,13 @@ class TopViewedPostResource extends JsonResource
     public function toArray(Request $request): array
     {
         return [
-            'id' => $this->id,
+            'rank' => (int) $this->rank,
+            'post_id' => $this->id,
             'title' => $this->title,
-            'author' => new UserResource($this->whenLoaded('author')),
+            'author' => $this->author?->name,
             'total_views' => (int) $this->total_views,
             'unique_users' => (int) $this->unique_users,
+            'trend' => $this->trend ?? 'stable',
             'created_at' => $this->created_at?->toISOString(),
         ];
     }

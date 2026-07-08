@@ -110,14 +110,14 @@ The public top-viewed endpoint also uses Laravel cache. In Docker that cache is 
 | GET | `/api/posts` | No | Paginated public post list |
 | GET | `/api/posts/{post}` | No | Public post detail and view tracking |
 | POST | `/api/posts` | Yes | Create a post with optional featured image |
-| GET | `/api/posts/top-viewed` | No | Top posts for a date range |
+| GET | `/api/posts/top-viewed` | No | Top posts for a date range with rank and aggregate meta |
 
 ### Analytics
 
 | Method | Endpoint | Auth | Description |
 |---|---|---:|---|
 | GET | `/api/posts/{post}/analytics/daily` | Yes | Daily chart rows with `from` and `to` filters |
-| GET | `/api/posts/{post}/analytics/summary` | Yes | Summary totals for the same date filters |
+| GET | `/api/posts/{post}/analytics/summary` | Yes | Daily chart rows plus summary totals for the same date filters |
 
 ## Example Requests
 

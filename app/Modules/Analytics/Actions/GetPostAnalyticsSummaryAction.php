@@ -18,6 +18,7 @@ final class GetPostAnalyticsSummaryAction
         return [
             'post' => $post,
             'period' => $daily['period'],
+            'analytics' => $daily['analytics'],
             'meta' => $daily['meta'],
         ];
     }

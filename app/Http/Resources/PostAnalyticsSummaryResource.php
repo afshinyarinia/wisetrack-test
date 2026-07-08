@@ -13,6 +13,7 @@ class PostAnalyticsSummaryResource extends JsonResource
             'post_id' => $this->resource['post']->id,
             'title' => $this->resource['post']->title,
             'period' => $this->resource['period'],
+            'analytics' => $this->resource['analytics'],
             'meta' => $this->resource['meta'],
         ];
     }
