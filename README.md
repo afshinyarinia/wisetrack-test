@@ -19,6 +19,44 @@ php artisan storage:link
 php artisan serve
 ```
 
+## Docker Setup
+
+The repository includes a Docker stack with Nginx, PHP-FPM, MySQL, Redis, and a dedicated queue worker.
+
+```bash
+docker compose up --build
+```
+
+The API will be available at:
+
+```text
+http://localhost:8080/api
+```
+
+The Docker environment uses:
+
+- MySQL for the application database
+- Redis for cache, sessions, and queues
+- A queue worker service for the welcome email job
+- A shared storage volume for uploaded post images
+
+The first app container startup runs migrations automatically. To seed sample data inside Docker:
+
+```bash
+docker compose exec app php artisan db:seed
+```
+
+Useful Docker commands:
+
+```bash
+docker compose exec app php artisan test
+docker compose exec app php artisan route:list --path=api
+docker compose exec app php artisan migrate:fresh --seed
+docker compose logs -f queue
+```
+
+Docker uses `.env.docker` by default through `docker-compose.yml`. The committed values are local development values only.
+
 For local development, SQLite is enough:
 
 ```env
@@ -44,6 +82,15 @@ php artisan queue:work
 ```
 
 Tests fake the queue where needed and assert the welcome job is dispatched.
+
+In Docker, the queue uses Redis:
+
+```env
+QUEUE_CONNECTION=redis
+REDIS_HOST=redis
+```
+
+The public top-viewed endpoint also uses Laravel cache. In Docker that cache is Redis-backed, with a short one-minute TTL so the endpoint stays responsive without keeping analytics stale for long.
 
 ## API Endpoints
 
